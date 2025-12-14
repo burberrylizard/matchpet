@@ -162,10 +162,17 @@ class _ProfilePageState extends State<ProfilePage> {
 }
 
 // ==========================================
-// NEW PAGE: MY LISTED PETS
+// NEW PAGE: MY LISTED PETS (With Status Edit)
 // ==========================================
 class MyListedPetsPage extends StatelessWidget {
   const MyListedPetsPage({super.key});
+
+  // Helper to update status directly from the list
+  void _updatePetStatus(String docId, String newStatus) {
+    FirebaseFirestore.instance.collection('pets').doc(docId).update({
+      'status': newStatus
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -211,6 +218,9 @@ class MyListedPetsPage extends StatelessWidget {
             itemBuilder: (context, index) {
               var pet = pets[index].data() as Map<String, dynamic>;
               String docId = pets[index].id;
+              
+              // Get current status, default to Available if missing
+              String currentStatus = pet['status'] ?? 'Available';
 
               return Container(
                 margin: const EdgeInsets.only(bottom: 15),
@@ -230,8 +240,59 @@ class MyListedPetsPage extends StatelessWidget {
                       fit: BoxFit.cover,
                     ),
                   ),
-                  title: Text(pet['name'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text("${pet['type']} • ${pet['age']}"),
+                  title: Text(
+                    pet['name'] ?? 'Unknown', 
+                    style: const TextStyle(fontWeight: FontWeight.bold)
+                  ),
+                  // --- MODIFIED SUBTITLE: Show details + Status Dropdown ---
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("${pet['type']} • ${pet['age']}"),
+                      const SizedBox(height: 8),
+                      
+                      // Status Dropdown Row
+                      Row(
+                        children: [
+                          const Text("Status: ", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                          const SizedBox(width: 5),
+                          Container(
+                            height: 30,
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[50],
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.grey.shade300)
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: currentStatus,
+                                icon: const Icon(Icons.arrow_drop_down, size: 18),
+                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                items: ['Available', 'Pending', 'Adopted'].map((String value) {
+                                  return DropdownMenuItem<String>(
+                                    value: value,
+                                    child: Text(
+                                      value, 
+                                      style: TextStyle(
+                                        color: value == 'Adopted' ? Colors.red : 
+                                               value == 'Pending' ? Colors.orange : Colors.green,
+                                      )
+                                    ),
+                                  );
+                                }).toList(),
+                                onChanged: (newValue) {
+                                  if (newValue != null) {
+                                    _updatePetStatus(docId, newValue);
+                                  }
+                                },
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                   trailing: IconButton(
                     icon: const Icon(Icons.delete_outline, color: Colors.red),
                     onPressed: () async {
