@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'dashboard.dart'; // <--- IMPORT YOUR DASHBOARD HERE
+import 'dashboard.dart'; 
 
 const Color brandPurple = Color(0xFF6A1B9A);
 
@@ -16,76 +16,80 @@ class AddPetPage extends StatefulWidget {
 }
 
 class _AddPetPageState extends State<AddPetPage> {
-  // Text Controllers
+  // --- Text Controllers ---
   final TextEditingController nameController = TextEditingController();
   final TextEditingController typeController = TextEditingController();
+  final TextEditingController breedController = TextEditingController(); // <--- NEW
   final TextEditingController ageController = TextEditingController();
-  final TextEditingController feeController = TextEditingController(); // <--- NEW CONTROLLER
+  final TextEditingController weightController = TextEditingController(); // <--- NEW
+  final TextEditingController colorController = TextEditingController(); // <--- NEW
+  final TextEditingController feeController = TextEditingController(); 
   final TextEditingController descriptionController = TextEditingController();
 
-  // Checklist State Variables
+  // --- Dropdown Values ---
+  String? _selectedGender; // <--- NEW
+  String? _selectedSize;   // <--- NEW
+
+  // --- Checklist State Variables ---
   bool isNeutered = false;
   bool isVaccinated = false;
   bool isPottyTrained = false;
   bool isFriendly = false;
 
-  // Image State Variables (Web Compatible)
+  // --- Image State Variables ---
   Uint8List? _webImage; 
   String? _fileName;
   bool isUploading = false;
+
+  final List<String> genderOptions = ['Male', 'Female', 'Unknown'];
+  final List<String> sizeOptions = ['Small', 'Medium', 'Large', 'X-Large'];
 
   @override
   void dispose() {
     nameController.dispose();
     typeController.dispose();
+    breedController.dispose();
     ageController.dispose();
-    feeController.dispose(); // <--- DISPOSE NEW CONTROLLER
+    weightController.dispose();
+    colorController.dispose();
+    feeController.dispose();
     descriptionController.dispose();
     super.dispose();
   }
 
   // ---------------------------------------------------
-  // 1. FUNCTION TO PICK IMAGE (Web Compatible)
+  // 1. FUNCTION TO PICK IMAGE 
   // ---------------------------------------------------
   Future<void> _pickImage() async {
     final ImagePicker picker = ImagePicker();
-    // Pick the image
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
 
     if (image != null) {
-      // Read as bytes (Uint8List) for Web support
       var f = await image.readAsBytes();
-      
       setState(() {
         _webImage = f;
-        _fileName = image.name; // Keep the name for the upload filename
+        _fileName = image.name; 
       });
     }
   }
 
   // ---------------------------------------------------
-  // 2. FUNCTION TO UPLOAD TO FIREBASE (Web Compatible)
+  // 2. FUNCTION TO UPLOAD TO FIREBASE 
   // ---------------------------------------------------
   Future<String?> _uploadImage() async {
     if (_webImage == null) return null;
 
     try {
-      // Create a unique filename using timestamp
       String uniqueName = '${DateTime.now().millisecondsSinceEpoch}_$_fileName';
-      
-      // Create a reference to Firebase Storage
       final ref = FirebaseStorage.instance
           .ref()
           .child('pet_images')
           .child(uniqueName);
 
-      // Upload the raw bytes using putData (Works on Web & Mobile)
       final metadata = SettableMetadata(contentType: 'image/jpeg');
       await ref.putData(_webImage!, metadata);
 
-      // Get the download URL
-      final url = await ref.getDownloadURL();
-      return url;
+      return await ref.getDownloadURL();
     } catch (e) {
       debugPrint("Error uploading: $e");
       return null;
@@ -103,28 +107,45 @@ class _AddPetPageState extends State<AddPetPage> {
       return;
     }
 
+    if (_selectedGender == null || _selectedSize == null) {
+       ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please select Gender and Size.")),
+      );
+      return;
+    }
+
     setState(() => isUploading = true);
 
-    // 1. Upload Image
     String? imageUrl = await _uploadImage();
 
     if (imageUrl != null) {
-      // 2. Save Data to Firestore
       try {
         await FirebaseFirestore.instance.collection('pets').add({
+          // Basic Info
           'name': nameController.text,
           'type': typeController.text,
+          'breed': breedController.text, // <--- SAVED
+          'gender': _selectedGender,     // <--- SAVED
+          'size': _selectedSize,         // <--- SAVED
+          
+          // Physical Details
           'age': ageController.text,
-          'adoptionFee': feeController.text, // <--- SAVE FEE HERE
+          'weight': weightController.text, // <--- SAVED
+          'color': colorController.text,   // <--- SAVED
+          
+          // Admin / Status
+          'adoptionFee': feeController.text, 
           'description': descriptionController.text,
           'imageUrl': imageUrl,
-          // Checklist items
+          
+          // Checklist
           'isNeutered': isNeutered,
           'isVaccinated': isVaccinated,
           'isPottyTrained': isPottyTrained,
           'isFriendly': isFriendly,
+          
+          // System Data
           'ownerId': FirebaseAuth.instance.currentUser?.uid,
-          // Timestamp so we can sort by newest
           'createdAt': FieldValue.serverTimestamp(),
         });
 
@@ -133,20 +154,6 @@ class _AddPetPageState extends State<AddPetPage> {
             const SnackBar(content: Text("Pet posted successfully!")),
           );
           
-          // Clear form state
-          setState(() {
-            isUploading = false;
-            _webImage = null;
-            nameController.clear();
-            typeController.clear();
-            ageController.clear();
-            feeController.clear(); // <--- CLEAR FEE
-            descriptionController.clear();
-          });
-
-          // --- NAVIGATE TO DASHBOARD ---
-          // This replaces the current screen with a fresh Dashboard
-          // which defaults to Index 0 (Home Grid)
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const Dashboard()),
@@ -186,11 +193,9 @@ class _AddPetPageState extends State<AddPetPage> {
           ),
           const SizedBox(height: 20),
 
-          // ----------------------------------------------
-          // PHOTO UPLOAD AREA (Clickable)
-          // ----------------------------------------------
+          // --- PHOTO UPLOAD ---
           GestureDetector(
-            onTap: _pickImage, // Triggers the picker
+            onTap: _pickImage,
             child: Container(
               height: 180,
               width: double.infinity,
@@ -204,7 +209,7 @@ class _AddPetPageState extends State<AddPetPage> {
                   ? ClipRRect(
                       borderRadius: BorderRadius.circular(20),
                       child: Image.memory(
-                        _webImage!, // Displays the selected image bytes
+                        _webImage!,
                         width: double.infinity,
                         height: 180,
                         fit: BoxFit.cover,
@@ -223,7 +228,7 @@ class _AddPetPageState extends State<AddPetPage> {
           ),
           const SizedBox(height: 25),
 
-          // Form Fields
+          // --- SECTION 1: IDENTITY ---
           _buildLabel("Pet Name"),
           _buildTextField(controller: nameController, hint: "e.g. Bella"),
 
@@ -236,7 +241,7 @@ class _AddPetPageState extends State<AddPetPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildLabel("Type"),
-                    _buildTextField(controller: typeController, hint: "Dog, Cat, Snake..."),
+                    _buildTextField(controller: typeController, hint: "Dog, Cat..."),
                   ],
                 ),
               ),
@@ -245,8 +250,8 @@ class _AddPetPageState extends State<AddPetPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildLabel("Age"),
-                    _buildTextField(controller: ageController, hint: "2 months, 1 year..."),
+                    _buildLabel("Breed"),
+                    _buildTextField(controller: breedController, hint: "Labrador, Persian..."),
                   ],
                 ),
               ),
@@ -255,15 +260,80 @@ class _AddPetPageState extends State<AddPetPage> {
 
           const SizedBox(height: 15),
 
-          // --- NEW ADOPTION FEE FIELD ---
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildLabel("Gender"),
+                    _buildDropdown(
+                      value: _selectedGender,
+                      items: genderOptions,
+                      onChanged: (val) => setState(() => _selectedGender = val),
+                      hint: "Select",
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 15),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildLabel("Size"),
+                     _buildDropdown(
+                      value: _selectedSize,
+                      items: sizeOptions,
+                      onChanged: (val) => setState(() => _selectedSize = val),
+                      hint: "Select",
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 15),
+
+          // --- SECTION 2: PHYSICAL DETAILS ---
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildLabel("Age"),
+                    _buildTextField(controller: ageController, hint: "e.g. 2 years"),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 15),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildLabel("Weight (kg/lbs)"),
+                    _buildTextField(controller: weightController, hint: "e.g. 5kg"),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: 15),
+          
+          _buildLabel("Color / Markings"),
+          _buildTextField(controller: colorController, hint: "e.g. Brown with white spots"),
+
+          const SizedBox(height: 15),
+
           _buildLabel("Adoption Fee (PHP)"),
           _buildTextField(controller: feeController, hint: "e.g. 500 or Free"),
 
           const SizedBox(height: 20),
 
-          // ----------------------------------------------
-          // CHECKLIST SECTION
-          // ----------------------------------------------
+          // --- SECTION 3: CHECKLIST ---
           const Text(
             "Health & Status",
             style: TextStyle(
@@ -306,14 +376,12 @@ class _AddPetPageState extends State<AddPetPage> {
 
           const SizedBox(height: 30),
 
-          // ----------------------------------------------
-          // SUBMIT BUTTON
-          // ----------------------------------------------
+          // --- SUBMIT BUTTON ---
           SizedBox(
             width: double.infinity,
             height: 55,
             child: ElevatedButton(
-              onPressed: isUploading ? null : _submitPost, // Disable while uploading
+              onPressed: isUploading ? null : _submitPost, 
               style: ElevatedButton.styleFrom(
                 backgroundColor: brandPurple,
                 shape: RoundedRectangleBorder(
@@ -335,6 +403,8 @@ class _AddPetPageState extends State<AddPetPage> {
       ),
     );
   }
+
+  // --- WIDGET BUILDERS ---
 
   Widget _buildCheckbox(
       String title, bool value, Function(bool?) onChanged) {
@@ -377,6 +447,36 @@ class _AddPetPageState extends State<AddPetPage> {
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
           borderSide: const BorderSide(color: brandPurple),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDropdown({
+    required String? value, 
+    required List<String> items, 
+    required Function(String?) onChanged,
+    required String hint
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 15),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: value,
+          isExpanded: true,
+          hint: Text(hint, style: TextStyle(color: Colors.grey[400])),
+          items: items.map((String item) {
+            return DropdownMenuItem<String>(
+              value: item,
+              child: Text(item),
+            );
+          }).toList(),
+          onChanged: onChanged,
         ),
       ),
     );

@@ -1,10 +1,11 @@
-// ignore_for_file: deprecated_member_use, duplicate_ignore
+// ignore_for_file: deprecated_member_use, use_build_context_synchronously, unnecessary_brace_in_string_interps
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:petmatch/add_pet.dart';
 import 'package:petmatch/profile.dart';
+import 'package:petmatch/chat.dart'; 
 
 const Color brandPurple = Color(0xFF6A1B9A);
 
@@ -26,11 +27,14 @@ class _DashboardState extends State<Dashboard> {
 
   @override
   Widget build(BuildContext context) {
+    // ------------------------------------
+    // PAGE NAVIGATION LOGIC
+    // ------------------------------------
     final List<Widget> pages = [
       _buildHomeContent(),        // 0. Home
-      const FavoritesPage(),      // 1. Favorites (Now a real page)
+      const FavoritesPage(),      // 1. Favorites
       const AddPetPage(),         // 2. Add Pet
-      const Center(child: Text("Chat Page")), // 3. Chat
+      const ChatPage(),           // 3. Chat 
       const ProfilePage(),        // 4. Profile
     ];
 
@@ -65,11 +69,26 @@ class _DashboardState extends State<Dashboard> {
         showUnselectedLabels: true,
         onTap: _onItemTapped,
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_outlined), activeIcon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.favorite_border), activeIcon: Icon(Icons.favorite), label: 'Favorites'),
-          BottomNavigationBarItem(icon: Icon(Icons.add_circle_outline), activeIcon: Icon(Icons.add_circle), label: 'Add Pet'),
-          BottomNavigationBarItem(icon: Icon(Icons.chat_bubble_outline), activeIcon: Icon(Icons.chat_bubble), label: 'Chat'),
-          BottomNavigationBarItem(icon: Icon(Icons.person_outline), activeIcon: Icon(Icons.person), label: 'Profile'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.home_outlined), 
+              activeIcon: Icon(Icons.home), 
+              label: 'Home'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.favorite_border), 
+              activeIcon: Icon(Icons.favorite), 
+              label: 'Favorites'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.add_circle_outline), 
+              activeIcon: Icon(Icons.add_circle), 
+              label: 'Add Pet'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.chat_bubble_outline), 
+              activeIcon: Icon(Icons.chat_bubble), 
+              label: 'Chat'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.person_outline), 
+              activeIcon: Icon(Icons.person), 
+              label: 'Profile'),
         ],
       ),
     );
@@ -108,7 +127,9 @@ class _DashboardState extends State<Dashboard> {
                         color: Colors.white,
                         fontSize: 26,
                         fontWeight: FontWeight.w800,
-                        shadows: [Shadow(offset: Offset(0, 2), blurRadius: 3.0, color: Colors.black45)],
+                        shadows: [
+                          Shadow(offset: Offset(0, 2), blurRadius: 3.0, color: Colors.black45)
+                        ],
                       ),
                     ),
                     const SizedBox(height: 20),
@@ -149,7 +170,7 @@ class _DashboardState extends State<Dashboard> {
 
           const SizedBox(height: 25),
 
-          // 3. TITLE
+          // 3. TITLE FOR GRID
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 20),
             child: Text(
@@ -172,11 +193,29 @@ class _DashboardState extends State<Dashboard> {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
+
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                   return const Center(child: Text("No pets posted yet."));
                 }
 
-                final pets = snapshot.data!.docs;
+                // --- CHANGE 1: Filter out user's own posts client-side ---
+                final uid = FirebaseAuth.instance.currentUser?.uid;
+                
+                final pets = snapshot.data!.docs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  // Only keep pets where ownerId is NOT the current user
+                  return data['ownerId'] != uid; 
+                }).toList();
+
+                if (pets.isEmpty) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(20.0),
+                      child: Text("No new pets to adopt right now."),
+                    ),
+                  );
+                }
+                // ---------------------------------------------------------
 
                 return GridView.builder(
                   shrinkWrap: true, 
@@ -185,7 +224,7 @@ class _DashboardState extends State<Dashboard> {
                     crossAxisCount: 2, 
                     crossAxisSpacing: 15,
                     mainAxisSpacing: 15,
-                    childAspectRatio: 0.70, // Slightly taller for the heart button
+                    childAspectRatio: 0.70, 
                   ),
                   itemCount: pets.length,
                   itemBuilder: (context, index) {
@@ -204,13 +243,10 @@ class _DashboardState extends State<Dashboard> {
     );
   }
 
-  // ------------------------------------
-  // PET CARD WIDGET
-  // ------------------------------------
+  // Helper: Pet Card
   Widget _buildPetCard(BuildContext context, Map<String, dynamic> pet, String petId) {
     return GestureDetector(
       onTap: () {
-        // Navigate to Details Page
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -224,7 +260,6 @@ class _DashboardState extends State<Dashboard> {
           borderRadius: BorderRadius.circular(15),
           boxShadow: [
             BoxShadow(
-              // ignore: deprecated_member_use
               color: Colors.grey.withOpacity(0.1),
               blurRadius: 5,
               spreadRadius: 1,
@@ -236,7 +271,6 @@ class _DashboardState extends State<Dashboard> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Image
                 Expanded(
                   child: ClipRRect(
                     borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
@@ -251,7 +285,6 @@ class _DashboardState extends State<Dashboard> {
                     ),
                   ),
                 ),
-                // Text
                 Padding(
                   padding: const EdgeInsets.all(12.0),
                   child: Column(
@@ -273,8 +306,6 @@ class _DashboardState extends State<Dashboard> {
                 ),
               ],
             ),
-            
-            // HEART BUTTON (Positioned Bottom Right)
             Positioned(
               bottom: 8,
               right: 8,
@@ -306,7 +337,7 @@ class _DashboardState extends State<Dashboard> {
 }
 
 // ==========================================
-// NEW WIDGET: FAVORITE BUTTON (Handles Logic)
+// WIDGET: FAVORITE BUTTON
 // ==========================================
 class FavoriteButton extends StatelessWidget {
   final Map<String, dynamic> petData;
@@ -320,7 +351,6 @@ class FavoriteButton extends StatelessWidget {
     if (uid == null) return const SizedBox();
 
     return StreamBuilder<DocumentSnapshot>(
-      // Listen to this specific pet in the user's favorites
       stream: FirebaseFirestore.instance
           .collection('users')
           .doc(uid)
@@ -341,17 +371,11 @@ class FavoriteButton extends StatelessWidget {
                 .doc(petId);
 
             if (isFavorite) {
-              // Remove from favorites
               await favRef.delete();
             } else {
-              // Add to favorites (Save basic info for the list)
-              await favRef.set({
-                'name': petData['name'],
-                'type': petData['type'],
-                'age': petData['age'],
-                'imageUrl': petData['imageUrl'],
-                'addedAt': FieldValue.serverTimestamp(),
-              });
+              Map<String, dynamic> dataToSave = Map.from(petData);
+              dataToSave['addedAt'] = FieldValue.serverTimestamp();
+              await favRef.set(dataToSave);
             }
           },
           child: Container(
@@ -361,7 +385,6 @@ class FavoriteButton extends StatelessWidget {
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  // ignore: deprecated_member_use
                   color: Colors.grey.withOpacity(0.3),
                   blurRadius: 4,
                   offset: const Offset(0, 2),
@@ -381,7 +404,7 @@ class FavoriteButton extends StatelessWidget {
 }
 
 // ==========================================
-// NEW PAGE: PET DETAILS PAGE (Expand)
+// PAGE: PET DETAILS PAGE
 // ==========================================
 class PetDetailsPage extends StatelessWidget {
   final Map<String, dynamic> petData;
@@ -391,13 +414,16 @@ class PetDetailsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // --- Determine Ownership ---
+    final currentUser = FirebaseAuth.instance.currentUser;
+    bool isOwner = currentUser != null && petData['ownerId'] == currentUser.uid;
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: Stack(
         children: [
           CustomScrollView(
             slivers: [
-              // 1. App Bar with Image
               SliverAppBar(
                 expandedHeight: 350,
                 backgroundColor: brandPurple,
@@ -409,8 +435,6 @@ class PetDetailsPage extends StatelessWidget {
                   ),
                 ),
               ),
-
-              // 2. Content Body
               SliverToBoxAdapter(
                 child: Container(
                   padding: const EdgeInsets.all(20),
@@ -418,11 +442,10 @@ class PetDetailsPage extends StatelessWidget {
                     color: Colors.white,
                     borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
                   ),
-                  transform: Matrix4.translationValues(0, -20, 0), // Pull up overlap
+                  transform: Matrix4.translationValues(0, -20, 0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Header
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -454,7 +477,6 @@ class PetDetailsPage extends StatelessWidget {
                       
                       const SizedBox(height: 25),
 
-                      // Checklist Chips
                       Wrap(
                         spacing: 10,
                         runSpacing: 10,
@@ -468,7 +490,6 @@ class PetDetailsPage extends StatelessWidget {
 
                       const SizedBox(height: 25),
 
-                      // Description
                       const Text(
                         "About Me",
                         style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
@@ -479,7 +500,7 @@ class PetDetailsPage extends StatelessWidget {
                         style: TextStyle(fontSize: 16, color: Colors.grey[700], height: 1.5),
                       ),
                       
-                      const SizedBox(height: 100), // Space for bottom button
+                      const SizedBox(height: 100),
                     ],
                   ),
                 ),
@@ -487,26 +508,92 @@ class PetDetailsPage extends StatelessWidget {
             ],
           ),
 
-          // 3. Adopt Button (Floating at bottom)
+          // --- CHANGE 2: ADOPT BUTTON LOGIC ---
           Positioned(
             bottom: 20,
             left: 20,
             right: 20,
-            child: ElevatedButton(
-              onPressed: () {
-                // Add Chat/Adopt logic here
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Request sent to owner!")));
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: brandPurple,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-              ),
-              child: const Text("ADOPT ME", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-            ),
+            child: isOwner
+                // STATE A: USER IS THE OWNER (Show disabled message)
+                ? Container(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    child: Text(
+                      "You posted this pet",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  )
+                // STATE B: USER IS A VISITOR (Show Adopt Button)
+                : ElevatedButton(
+                    onPressed: () async {
+                      if (currentUser == null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Please log in to adopt.")),
+                        );
+                        return;
+                      }
+
+                      // Generate Unique Chat ID
+                      String ownerId = petData['ownerId'];
+                      List<String> ids = [currentUser.uid, ownerId];
+                      ids.sort(); 
+                      String chatId = "${ids[0]}_${ids[1]}_${petId}"; 
+
+                      // Create Chat if it doesn't exist
+                      final chatDoc = await FirebaseFirestore.instance.collection('chats').doc(chatId).get();
+
+                      if (!chatDoc.exists) {
+                        await FirebaseFirestore.instance.collection('chats').doc(chatId).set({
+                          'participants': [currentUser.uid, ownerId],
+                          'participantNames': [currentUser.email, "Owner"], 
+                          'petName': petData['name'],
+                          'petId': petId,
+                          'lastMessage': 'Started an inquiry for ${petData['name']}',
+                          'timestamp': FieldValue.serverTimestamp(),
+                        });
+                        
+                        // Auto-send first message
+                        await FirebaseFirestore.instance
+                            .collection('chats')
+                            .doc(chatId)
+                            .collection('messages')
+                            .add({
+                          'text': "Hi! I'm interested in adopting ${petData['name']}.",
+                          'senderId': currentUser.uid,
+                          'createdAt': FieldValue.serverTimestamp(),
+                        });
+                      }
+
+                      // Navigate to Chat Room
+                      if (context.mounted) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ChatRoomPage(
+                              chatId: chatId, 
+                              otherUserName: "Owner of ${petData['name']}"
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: brandPurple,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                    ),
+                    child: const Text("ADOPT ME", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                  ),
           ),
           
-          // 4. Heart Button (Floating over content)
           Positioned(
             top: 40,
             right: 20,
@@ -524,7 +611,6 @@ class PetDetailsPage extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        // ignore: deprecated_member_use
         color: color.withOpacity(0.1),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: color.withOpacity(0.5)),
@@ -538,7 +624,7 @@ class PetDetailsPage extends StatelessWidget {
 }
 
 // ==========================================
-// NEW PAGE: FAVORITES PAGE
+// PAGE: FAVORITES PAGE
 // ==========================================
 class FavoritesPage extends StatelessWidget {
   const FavoritesPage({super.key});
@@ -599,9 +685,6 @@ class FavoritesPage extends StatelessWidget {
                 child: ListTile(
                   contentPadding: const EdgeInsets.all(10),
                   onTap: () {
-                    // Navigate to Details using the saved snapshot data
-                    // Note: This data might be slightly stale compared to the main 'pets' collection,
-                    // but it saves reads. Ideally, you fetch the fresh data here.
                     Navigator.push(
                       context,
                       MaterialPageRoute(
