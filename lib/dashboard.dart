@@ -174,7 +174,7 @@ class _DashboardState extends State<Dashboard> {
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 20),
             child: Text(
-              "Recently Added",
+              "Reccomended For You",
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
           ),
