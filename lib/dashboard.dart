@@ -18,6 +18,10 @@ class Dashboard extends StatefulWidget {
 
 class _DashboardState extends State<Dashboard> {
   int _selectedIndex = 0;
+  
+  // --- SEARCH STATE ---
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = "";
 
   void _onItemTapped(int index) {
     setState(() {
@@ -26,10 +30,13 @@ class _DashboardState extends State<Dashboard> {
   }
 
   @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // ------------------------------------
-    // PAGE NAVIGATION LOGIC
-    // ------------------------------------
     final List<Widget> pages = [
       _buildHomeContent(),        // 0. Home
       const FavoritesPage(),      // 1. Favorites
@@ -95,14 +102,14 @@ class _DashboardState extends State<Dashboard> {
   }
 
   // ------------------------------------
-  // HOME PAGE CONTENT
+  // HOME PAGE CONTENT (Updated)
   // ------------------------------------
   Widget _buildHomeContent() {
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. HERO SECTION
+          // 1. HERO SECTION WITH SEARCH
           Stack(
             alignment: Alignment.center,
             children: [
@@ -133,15 +140,23 @@ class _DashboardState extends State<Dashboard> {
                       ),
                     ),
                     const SizedBox(height: 20),
+                    
+                    // --- FUNCTIONAL SEARCH BAR ---
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 15),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(30),
                       ),
-                      child: const TextField(
-                        decoration: InputDecoration(
-                          hintText: 'Search Terrier, Kitten, etc.',
+                      child: TextField(
+                        controller: _searchController,
+                        onChanged: (value) {
+                          setState(() {
+                            _searchQuery = value.toLowerCase().trim();
+                          });
+                        },
+                        decoration: const InputDecoration(
+                          hintText: 'Search by name or type...',
                           border: InputBorder.none,
                           icon: Icon(Icons.search, color: Colors.grey),
                         ),
@@ -153,24 +168,9 @@ class _DashboardState extends State<Dashboard> {
             ],
           ),
 
-          const SizedBox(height: 20),
-
-          // 2. CATEGORY PILLS
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _buildCategoryPill(Icons.pets, "Dogs"),
-                _buildCategoryPill(Icons.cruelty_free, "Cats"),
-                _buildCategoryPill(Icons.emoji_nature, "Other"),
-              ],
-            ),
-          ),
-
           const SizedBox(height: 25),
 
-          // 3. TITLE FOR GRID
+          // 2. TITLE FOR GRID
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 20),
             child: Text(
@@ -181,7 +181,7 @@ class _DashboardState extends State<Dashboard> {
           
           const SizedBox(height: 15),
 
-          // 4. LIVE GRID (StreamBuilder)
+          // 3. LIVE GRID (StreamBuilder + Filter Logic)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: StreamBuilder<QuerySnapshot>(
@@ -198,24 +198,35 @@ class _DashboardState extends State<Dashboard> {
                   return const Center(child: Text("No pets posted yet."));
                 }
 
-                // --- CHANGE 1: Filter out user's own posts client-side ---
                 final uid = FirebaseAuth.instance.currentUser?.uid;
                 
+                // --- FILTERING LOGIC ---
                 final pets = snapshot.data!.docs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
-                  // Only keep pets where ownerId is NOT the current user
-                  return data['ownerId'] != uid; 
+                  
+                  // 1. Basic Filters (Hide own posts & adopted)
+                  bool isNotOwner = data['ownerId'] != uid;
+                  bool isAvailable = data['status'] != 'Adopted';
+
+                  // 2. Search Filter (Name or Type)
+                  bool matchesSearch = true;
+                  if (_searchQuery.isNotEmpty) {
+                    String name = (data['name'] ?? '').toString().toLowerCase();
+                    String type = (data['type'] ?? '').toString().toLowerCase();
+                    matchesSearch = name.contains(_searchQuery) || type.contains(_searchQuery);
+                  }
+
+                  return isNotOwner && isAvailable && matchesSearch; 
                 }).toList();
 
                 if (pets.isEmpty) {
                   return const Center(
                     child: Padding(
                       padding: EdgeInsets.all(20.0),
-                      child: Text("No new pets to adopt right now."),
+                      child: Text("No pets found matching your search."),
                     ),
                   );
                 }
-                // ---------------------------------------------------------
 
                 return GridView.builder(
                   shrinkWrap: true, 
@@ -245,6 +256,8 @@ class _DashboardState extends State<Dashboard> {
 
   // Helper: Pet Card
   Widget _buildPetCard(BuildContext context, Map<String, dynamic> pet, String petId) {
+    bool isPending = pet['status'] == 'Pending';
+
     return GestureDetector(
       onTap: () {
         Navigator.push(
@@ -306,6 +319,25 @@ class _DashboardState extends State<Dashboard> {
                 ),
               ],
             ),
+            
+            // Pending Badge
+            if (isPending)
+              Positioned(
+                top: 8,
+                left: 8,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.orange,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Text(
+                    "PENDING",
+                    style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ),
+
             Positioned(
               bottom: 8,
               right: 8,
@@ -313,24 +345,6 @@ class _DashboardState extends State<Dashboard> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildCategoryPill(IconData icon, String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.grey.shade200),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: brandPurple),
-          const SizedBox(width: 8),
-          Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
-        ],
       ),
     );
   }
@@ -404,19 +418,61 @@ class FavoriteButton extends StatelessWidget {
 }
 
 // ==========================================
-// PAGE: PET DETAILS PAGE
+// PAGE: PET DETAILS PAGE (Stateful with Status)
 // ==========================================
-class PetDetailsPage extends StatelessWidget {
+class PetDetailsPage extends StatefulWidget {
   final Map<String, dynamic> petData;
   final String petId;
 
   const PetDetailsPage({super.key, required this.petData, required this.petId});
 
   @override
+  State<PetDetailsPage> createState() => _PetDetailsPageState();
+}
+
+class _PetDetailsPageState extends State<PetDetailsPage> {
+  late String currentStatus;
+
+  @override
+  void initState() {
+    super.initState();
+    currentStatus = widget.petData['status'] ?? 'Available';
+  }
+
+  Future<void> _updateStatus(String newStatus) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('pets')
+          .doc(widget.petId)
+          .update({'status': newStatus});
+      
+      setState(() {
+        currentStatus = newStatus;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Status updated to $newStatus")),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Failed to update status")),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // --- Determine Ownership ---
     final currentUser = FirebaseAuth.instance.currentUser;
-    bool isOwner = currentUser != null && petData['ownerId'] == currentUser.uid;
+    bool isOwner = currentUser != null && widget.petData['ownerId'] == currentUser.uid;
+
+    Color statusColor;
+    if (currentStatus == 'Adopted') {
+      statusColor = Colors.red;
+    } else if (currentStatus == 'Pending') {
+      statusColor = Colors.orange;
+    } else {
+      statusColor = Colors.green;
+    }
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -430,7 +486,7 @@ class PetDetailsPage extends StatelessWidget {
                 pinned: true,
                 flexibleSpace: FlexibleSpaceBar(
                   background: Image.network(
-                    petData['imageUrl'] ?? 'https://via.placeholder.com/300',
+                    widget.petData['imageUrl'] ?? 'https://via.placeholder.com/300',
                     fit: BoxFit.cover,
                   ),
                 ),
@@ -446,45 +502,119 @@ class PetDetailsPage extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                      // --- OWNER STATUS CONTROLS ---
+                      if (isOwner) 
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 20),
+                          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[100],
+                            borderRadius: BorderRadius.circular(15),
+                            border: Border.all(color: Colors.grey.shade300)
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                petData['name'] ?? 'Unknown',
-                                style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-                              ),
-                              Text(
-                                "${petData['type']} • ${petData['age']}",
-                                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                              const Text("Set Status:", style: TextStyle(fontWeight: FontWeight.bold)),
+                              DropdownButton<String>(
+                                value: currentStatus,
+                                underline: const SizedBox(),
+                                items: ['Available', 'Pending', 'Adopted'].map((String value) {
+                                  return DropdownMenuItem<String>(
+                                    value: value,
+                                    child: Text(
+                                      value, 
+                                      style: TextStyle(
+                                        color: value == 'Adopted' ? Colors.red : 
+                                               value == 'Pending' ? Colors.orange : Colors.green,
+                                        fontWeight: FontWeight.bold
+                                      )
+                                    ),
+                                  );
+                                }).toList(),
+                                onChanged: (val) {
+                                  if (val != null) _updateStatus(val);
+                                },
                               ),
                             ],
                           ),
-                          Text(
-                            petData['adoptionFee'] != null && petData['adoptionFee'].toString().isNotEmpty
-                                ? "PHP ${petData['adoptionFee']}"
-                                : "Free",
-                            style: const TextStyle(
-                              fontSize: 22, 
-                              fontWeight: FontWeight.bold, 
-                              color: brandPurple
+                        ),
+
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  widget.petData['name'] ?? 'Unknown',
+                                  style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                                ),
+                                Text(
+                                  "${widget.petData['breed'] ?? 'Mixed'} • ${widget.petData['age']}",
+                                  style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                                ),
+                              ],
                             ),
+                          ),
+                          
+                          // --- STATUS BADGE (For Visitors) ---
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                widget.petData['adoptionFee'] != null && widget.petData['adoptionFee'].toString().isNotEmpty
+                                    ? "PHP ${widget.petData['adoptionFee']}"
+                                    : "Free",
+                                style: const TextStyle(
+                                  fontSize: 20, 
+                                  fontWeight: FontWeight.bold, 
+                                  color: brandPurple
+                                ),
+                              ),
+                              if (!isOwner && currentStatus != 'Available')
+                                Container(
+                                  margin: const EdgeInsets.only(top: 5),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: statusColor,
+                                    borderRadius: BorderRadius.circular(10)
+                                  ),
+                                  child: Text(
+                                    currentStatus.toUpperCase(),
+                                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                  ),
+                                )
+                            ],
                           ),
                         ],
                       ),
                       
                       const SizedBox(height: 25),
 
+                      // --- DETAILS GRID ---
                       Wrap(
                         spacing: 10,
                         runSpacing: 10,
                         children: [
-                          if (petData['isNeutered'] == true) _buildChip("Neutered", Colors.blue),
-                          if (petData['isVaccinated'] == true) _buildChip("Vaccinated", Colors.green),
-                          if (petData['isPottyTrained'] == true) _buildChip("Potty Trained", Colors.orange),
-                          if (petData['isFriendly'] == true) _buildChip("Friendly", Colors.pink),
+                          _buildDetailChip(Icons.transgender, widget.petData['gender'] ?? 'Unknown'),
+                          _buildDetailChip(Icons.straighten, widget.petData['size'] ?? 'Unknown'),
+                          _buildDetailChip(Icons.monitor_weight_outlined, widget.petData['weight'] ?? '-'),
+                          _buildDetailChip(Icons.palette_outlined, widget.petData['color'] ?? 'Unknown'),
+                        ],
+                      ),
+                      const SizedBox(height: 15),
+
+                      // --- CHECKLIST ---
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          if (widget.petData['isNeutered'] == true) _buildChip("Neutered", Colors.blue),
+                          if (widget.petData['isVaccinated'] == true) _buildChip("Vaccinated", Colors.green),
+                          if (widget.petData['isPottyTrained'] == true) _buildChip("Potty Trained", Colors.orange),
+                          if (widget.petData['isFriendly'] == true) _buildChip("Friendly", Colors.pink),
                         ],
                       ),
 
@@ -496,7 +626,7 @@ class PetDetailsPage extends StatelessWidget {
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        petData['description'] ?? "No description provided.",
+                        widget.petData['description'] ?? "No description provided.",
                         style: TextStyle(fontSize: 16, color: Colors.grey[700], height: 1.5),
                       ),
                       
@@ -508,90 +638,63 @@ class PetDetailsPage extends StatelessWidget {
             ],
           ),
 
-          // --- CHANGE 2: ADOPT BUTTON LOGIC ---
+          // --- ADOPT BUTTON LOGIC ---
           Positioned(
             bottom: 20,
             left: 20,
             right: 20,
             child: isOwner
-                // STATE A: USER IS THE OWNER (Show disabled message)
-                ? Container(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: Text(
-                      "You posted this pet",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[600],
+                ? _buildDisabledButton("You posted this pet")
+                : currentStatus == 'Adopted'
+                  ? _buildDisabledButton("Adopted")
+                  : currentStatus == 'Pending'
+                    ? _buildDisabledButton("Adoption Pending")
+                    : ElevatedButton(
+                        onPressed: () async {
+                          if (currentUser == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text("Please log in to adopt.")),
+                            );
+                            return;
+                          }
+                          
+                          String ownerId = widget.petData['ownerId'];
+                          List<String> ids = [currentUser.uid, ownerId];
+                          ids.sort(); 
+                          String chatId = "${ids[0]}_${ids[1]}_${widget.petId}"; 
+
+                          final chatDoc = await FirebaseFirestore.instance.collection('chats').doc(chatId).get();
+
+                          if (!chatDoc.exists) {
+                            await FirebaseFirestore.instance.collection('chats').doc(chatId).set({
+                              'participants': [currentUser.uid, ownerId],
+                              'participantNames': [currentUser.email, "Owner"], 
+                              'petName': widget.petData['name'],
+                              'petId': widget.petId,
+                              'lastMessage': 'Started an inquiry for ${widget.petData['name']}',
+                              'timestamp': FieldValue.serverTimestamp(),
+                            });
+                            
+                            await FirebaseFirestore.instance.collection('chats').doc(chatId).collection('messages').add({
+                              'text': "Hi! I'm interested in adopting ${widget.petData['name']}.",
+                              'senderId': currentUser.uid,
+                              'createdAt': FieldValue.serverTimestamp(),
+                            });
+                          }
+
+                          if (context.mounted) {
+                            Navigator.push(context, MaterialPageRoute(
+                                builder: (context) => ChatRoomPage(chatId: chatId, otherUserName: "Owner of ${widget.petData['name']}")
+                            ));
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: brandPurple,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                        ),
+                        child: const Text("ADOPT ME", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
                       ),
-                    ),
-                  )
-                // STATE B: USER IS A VISITOR (Show Adopt Button)
-                : ElevatedButton(
-                    onPressed: () async {
-                      if (currentUser == null) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("Please log in to adopt.")),
-                        );
-                        return;
-                      }
-
-                      // Generate Unique Chat ID
-                      String ownerId = petData['ownerId'];
-                      List<String> ids = [currentUser.uid, ownerId];
-                      ids.sort(); 
-                      String chatId = "${ids[0]}_${ids[1]}_${petId}"; 
-
-                      // Create Chat if it doesn't exist
-                      final chatDoc = await FirebaseFirestore.instance.collection('chats').doc(chatId).get();
-
-                      if (!chatDoc.exists) {
-                        await FirebaseFirestore.instance.collection('chats').doc(chatId).set({
-                          'participants': [currentUser.uid, ownerId],
-                          'participantNames': [currentUser.email, "Owner"], 
-                          'petName': petData['name'],
-                          'petId': petId,
-                          'lastMessage': 'Started an inquiry for ${petData['name']}',
-                          'timestamp': FieldValue.serverTimestamp(),
-                        });
-                        
-                        // Auto-send first message
-                        await FirebaseFirestore.instance
-                            .collection('chats')
-                            .doc(chatId)
-                            .collection('messages')
-                            .add({
-                          'text': "Hi! I'm interested in adopting ${petData['name']}.",
-                          'senderId': currentUser.uid,
-                          'createdAt': FieldValue.serverTimestamp(),
-                        });
-                      }
-
-                      // Navigate to Chat Room
-                      if (context.mounted) {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => ChatRoomPage(
-                              chatId: chatId, 
-                              otherUserName: "Owner of ${petData['name']}"
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: brandPurple,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                    ),
-                    child: const Text("ADOPT ME", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-                  ),
           ),
           
           Positioned(
@@ -599,10 +702,29 @@ class PetDetailsPage extends StatelessWidget {
             right: 20,
             child: CircleAvatar(
               backgroundColor: Colors.white,
-              child: FavoriteButton(petData: petData, petId: petId),
+              child: FavoriteButton(petData: widget.petData, petId: widget.petId),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDisabledButton(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Colors.grey[300],
+        borderRadius: BorderRadius.circular(15),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+          color: Colors.grey[600],
+        ),
       ),
     );
   }
@@ -621,11 +743,27 @@ class PetDetailsPage extends StatelessWidget {
       ),
     );
   }
+
+  Widget _buildDetailChip(IconData icon, String label) {
+     return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: Colors.grey[600]),
+          const SizedBox(width: 6),
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+  }
 }
 
-// ==========================================
-// PAGE: FAVORITES PAGE
-// ==========================================
 class FavoritesPage extends StatelessWidget {
   const FavoritesPage({super.key});
 
