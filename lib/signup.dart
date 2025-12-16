@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'dashboard.dart'; // Make sure this import points to your dashboard file
+import 'package:petmatch/login.dart';
 
 // Define the brand color locally to ensure it matches
 const Color brandPurple = Color(0xFF6A1B9A);
@@ -58,9 +58,9 @@ class _SignupPageState extends State<SignupPage> {
       // 3. Create User in Firebase Auth
       UserCredential userCredential = await FirebaseAuth.instance
           .createUserWithEmailAndPassword(
-        email: emailController.text.trim(),
-        password: passwordController.text.trim(),
-      );
+            email: emailController.text.trim(),
+            password: passwordController.text.trim(),
+          );
 
       // 4. Save Extra Data (Name, Username) to Firestore
       String uid = userCredential.user!.uid;
@@ -78,7 +78,7 @@ class _SignupPageState extends State<SignupPage> {
         // 5. Navigate to Dashboard on Success
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const Dashboard()),
+          MaterialPageRoute(builder: (context) => const LoginPage()),
         );
       }
     } on FirebaseAuthException catch (e) {
@@ -185,15 +185,19 @@ class _SignupPageState extends State<SignupPage> {
                     padding: const EdgeInsets.only(top: 10, bottom: 10),
                     child: Row(
                       children: [
-                        const Icon(Icons.error_outline,
-                            color: Colors.redAccent, size: 20),
+                        const Icon(
+                          Icons.error_outline,
+                          color: Colors.redAccent,
+                          size: 20,
+                        ),
                         const SizedBox(width: 5),
                         Expanded(
                           child: Text(
                             errorMessage,
                             style: const TextStyle(
-                                color: Colors.redAccent,
-                                fontWeight: FontWeight.w500),
+                              color: Colors.redAccent,
+                              fontWeight: FontWeight.w500,
+                            ),
                             overflow: TextOverflow.ellipsis,
                             maxLines: 2,
                           ),
@@ -289,10 +293,7 @@ class _SignupPageState extends State<SignupPage> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
-          borderSide: const BorderSide(
-            color: brandPurple,
-            width: 1.5,
-          ),
+          borderSide: const BorderSide(color: brandPurple, width: 1.5),
         ),
       ),
     );

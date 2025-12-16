@@ -1,9 +1,12 @@
-// ignore_for_file: deprecated_member_use
+// ignore_for_file: deprecated_member_use, use_build_context_synchronously
 
+import 'dart:typed_data'; // Needed for image bytes
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'signup.dart'; // Import so we can redirect to signup on logout
+import 'package:firebase_storage/firebase_storage.dart'; // Needed for storage
+import 'package:image_picker/image_picker.dart'; // Needed for picking images
+import 'signup.dart'; 
 
 const Color brandPurple = Color(0xFF6A1B9A);
 
@@ -19,6 +22,59 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   final User? currentUser = FirebaseAuth.instance.currentUser;
+  bool isUploading = false; // To show loading state during upload
+
+  // ------------------------------------
+  // 1. UPLOAD PROFILE PICTURE LOGIC
+  // ------------------------------------
+  Future<void> _uploadProfilePicture() async {
+    final ImagePicker picker = ImagePicker();
+    // Pick the image
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+
+    if (image == null) return; // User cancelled
+
+    setState(() {
+      isUploading = true;
+    });
+
+    try {
+      // 1. Read bytes (Works for Web & Mobile)
+      Uint8List fileBytes = await image.readAsBytes();
+
+      // 2. Create Reference: user_profiles/USER_ID.jpg
+      // This overwrites the previous image, saving space.
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('user_profiles')
+          .child('${currentUser!.uid}.jpg');
+
+      // 3. Upload
+      final metadata = SettableMetadata(contentType: 'image/jpeg');
+      await ref.putData(fileBytes, metadata);
+
+      // 4. Get Download URL
+      String downloadUrl = await ref.getDownloadURL();
+
+      // 5. Update Firestore User Document
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser!.uid)
+          .update({'profileImageUrl': downloadUrl});
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Profile picture updated!")),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Upload failed: $e")),
+      );
+    } finally {
+      setState(() {
+        isUploading = false;
+      });
+    }
+  }
 
   Future<void> _signOut() async {
     await FirebaseAuth.instance.signOut();
@@ -38,9 +94,9 @@ class _ProfilePageState extends State<ProfilePage> {
     return SingleChildScrollView(
       child: Column(
         children: [
-          // 1. HEADER SECTION
-          FutureBuilder<DocumentSnapshot>(
-            future: FirebaseFirestore.instance.collection('users').doc(currentUser!.uid).get(),
+          // 1. HEADER SECTION (Changed to StreamBuilder for real-time updates)
+          StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance.collection('users').doc(currentUser!.uid).snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const SizedBox(height: 200, child: Center(child: CircularProgressIndicator()));
@@ -53,6 +109,8 @@ class _ProfilePageState extends State<ProfilePage> {
               String fullName = data['fullName'] ?? 'No Name';
               String username = data['username'] ?? 'No Username';
               String email = data['email'] ?? currentUser!.email!;
+              
+              String profileImage = data['profileImageUrl'] ?? "https://i.pravatar.cc/300";
 
               return Container(
                 padding: const EdgeInsets.only(top: 20, bottom: 30),
@@ -73,11 +131,42 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
                 child: Column(
                   children: [
-                    CircleAvatar(
-                      radius: 60,
-                      backgroundColor: Colors.grey[200],
-                      backgroundImage: const NetworkImage("https://i.pravatar.cc/300"), 
+                    // --- PROFILE PICTURE WITH EDIT BUTTON ---
+                    Stack(
+                      children: [
+                        Container(
+                          margin: const EdgeInsets.all(5),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: brandPurple.withOpacity(0.2), width: 3),
+                          ),
+                          child: CircleAvatar(
+                            radius: 60,
+                            backgroundColor: Colors.grey[200],
+                            backgroundImage: NetworkImage(profileImage),
+                            child: isUploading 
+                              ? const CircularProgressIndicator(color: brandPurple) 
+                              : null,
+                          ),
+                        ),
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: GestureDetector(
+                            onTap: isUploading ? null : _uploadProfilePicture,
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: const BoxDecoration(
+                                color: brandPurple,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
+                    
                     const SizedBox(height: 15),
                     Text(
                       fullName,
@@ -219,7 +308,6 @@ class MyListedPetsPage extends StatelessWidget {
               var pet = pets[index].data() as Map<String, dynamic>;
               String docId = pets[index].id;
               
-              // Get current status, default to Available if missing
               String currentStatus = pet['status'] ?? 'Available';
 
               return Container(
@@ -324,9 +412,7 @@ class MyListedPetsPage extends StatelessWidget {
   }
 }
 
-// ==========================================
-// NEW PAGE: ADOPTION HISTORY
-// ==========================================
+
 class AdoptionHistoryPage extends StatelessWidget {
   const AdoptionHistoryPage({super.key});
 

@@ -66,8 +66,7 @@ class ChatPage extends StatelessWidget {
               var chat = chats[index].data() as Map<String, dynamic>;
               String chatId = chats[index].id;
               
-              // --- SAFETY LOGIC START ---
-              // Prevents the "tear" crash by ensuring strings are never null
+            
               String otherName = "Chat";
               List<dynamic> names = chat['participantNames'] ?? [];
               String? myEmail = FirebaseAuth.instance.currentUser?.email;
@@ -82,8 +81,7 @@ class ChatPage extends StatelessWidget {
               if (chat['petName'] != null) {
                 displayTitle = "${chat['petName']} Inquiry";
               }
-              // --- SAFETY LOGIC END ---
-
+              
               return ListTile(
                 leading: CircleAvatar(
                   backgroundColor: brandPurple.withOpacity(0.1),
